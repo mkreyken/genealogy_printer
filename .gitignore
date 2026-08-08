@@ -1,0 +1,10 @@
+.idea/
+photod/
+data/
+output/
+Genealogy.iml
+*.pdf
+*.jpg
+__pycache__/
+*.zip
+*.iml
