@@ -8,3 +8,5 @@ Genealogy.iml
 __pycache__/
 *.zip
 *.iml
+sample_runs/
+uv.lock

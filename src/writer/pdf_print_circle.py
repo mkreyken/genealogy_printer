@@ -101,7 +101,7 @@ def run():
     people = gr.load_people()
     pdf = PdfHandler("user_reader.pdf", pagesize=DEFAULT_PAGE_SIZE, font_size=DEFAULT_FONT_SIZE)
     co = CircleOutput(people, pdf)
-    do_person = people["CoralineDeRosier"]
+    do_person = people["person_id"]
     co.walk_parents(do_person, 0, 0, 360)
     # Save the pdf file
     pdf.end_page_and_save()

@@ -13,11 +13,15 @@ import os
 from dataclasses import dataclass
 # to manage user input
 from textwrap import TextWrapper
+from typing import Optional
 
 # to work with pdf
 import reportlab.lib.pagesizes as r_page_sizes
 import reportlab.pdfbase.pdfmetrics as r_metrics
 import reportlab.pdfgen.canvas as r_canvas
+from reportlab.pdfgen.canvas import Canvas
+from reportlab.pdfgen.textobject import PDFTextObject
+
 
 @dataclass(frozen=True)
 class FontType:
@@ -27,43 +31,47 @@ class FontType:
 DEFAULT_FONT = FontType(font= "Times-Roman", size= 10)
 
 
-def angle_to_rad(angle):
+def angle_to_rad(angle : float) -> float:
     pi180 = math.pi / 180
     return angle * pi180
 
-def rad_to_angle(angle):
+def rad_to_angle(angle:float)-> float:
     pi180 = math.pi / 180
     return angle / pi180
 
 
 # angle in degrees
-def angle_to_transform(angle, counterclockwise=False, perpendicular=0):
+def angle_to_transform(angle : float, counterclockwise:bool=False, perpendicular : int=0) -> tuple[float,float,float,float]:
     co = math.cos(angle_to_rad(angle + perpendicular * 90))
     si = math.sin(angle_to_rad(angle + perpendicular * 90))
     if counterclockwise:
-        return [co, -si, si, co]
+        return co, -si, si, co
     else:
-        return [co, si, -si, co]
+        return co, si, -si, co
 
 
 # angle in degrees
-def angle_and_distance_to_xy(angle, radius):
+def angle_and_distance_to_xy(angle:float, radius:float) -> tuple[float,float]:
     x = math.cos(angle_to_rad(angle)) * radius
     y = math.sin(angle_to_rad(angle)) * radius
-    return [x, y]
+    return x, y
 
 
 # x offset, y offset are on the normal x,y plane, we need to rotate then angle degrees
-def translate_angle_and_distance_to_xy(angle, x, y, counterclockwise=False, perpendicular=0):
+def translate_angle_and_distance_to_xy(angle :float, x: float, y:float, counterclockwise:bool=False, perpendicular: int=0) -> tuple[float,float]:
     a, b, c, d = angle_to_transform(angle, counterclockwise=not counterclockwise, perpendicular=perpendicular)
     x1 = a * x + b * y
     y1 = c * x + d * y
-    return [x1, y1]
+    return x1, y1
 
 
 # look in directory for standard fonts: import reportlab.fonts
 # The default page size is A4 (595.27 by 841.89) for reportlab
 class PdfHandler:
+    font:FontType
+    canvas: Canvas
+    filename: str
+
     #  response = HttpResponse(content_type='application/pdf')
     def __init__(self, filename, pagesize=r_page_sizes.LETTER, response=None, font_name=None, font_size=None):
         if not filename.endswith(".pdf"):
@@ -84,44 +92,42 @@ class PdfHandler:
         self.__set_font(self.canvas, self.font)
 
     @classmethod
-    def __set_font(cls, pdf_object, font):
+    def __set_font(cls, pdf_object : PDFTextObject|Canvas, font : FontType) -> None:
         if font:
             pdf_object.setFont(font.font, font.size)
 
-    def text_height(self, font=None):
+    def text_height(self, font:Optional[FontType]=None) -> float:
         if not font:
             font = self.font
         h = r_metrics.TypeFace(font.font)
         return ((h.ascent - h.descent) * font.size) / 1000
 
-    def end_page_and_save(self):
+    def end_page_and_save(self) -> None:
         self.end_page()
         self.canvas.save()
 
-    def end_page(self):
+    def end_page(self)-> None:
         self.canvas.showPage()
 
-    def display_file(self):
+    def display_file(self) -> None:
         os.startfile(self.filename)
 
-    @classmethod
-    def append_pdf(cls, input_pdf, output_pdf):
-        [output_pdf.addPage(input_pdf.getPage(page_num)) for page_num in range(input_pdf.numPages)]
-
-    def size_of_text(self, text, font=None):
+    def size_of_text(self, text, font: Optional[FontType]=None) -> float:
         if not font:
             font = self.font
         return r_metrics.stringWidth(text, font.font, font.size)
 
-    def draw_line(self, x1, y1, x2, y2):
+    def draw_line(self, x1:float, y1:float, x2:float, y2:float) -> None:
         self.canvas.line(x1, y1, x2, y2)
 
-    def draw_circle_arc(self, x_c, y_c, radius, start_angle, end_angle):
+    def draw_circle_arc(self, x_c:float, y_c:float, radius:float,
+                        start_angle:float, end_angle:float) -> None:
         # angles are in degrees not rads
         self.canvas.arc(x_c - radius, y_c - radius, x_c + radius, y_c + radius, start_angle, end_angle)
 
     # centered = will be centered on x,y
-    def multi_line_text(self, text, x, y, font=None, centered=False, top_corner=False):
+    def multi_line_text(self, text:str, x:float, y:float, font:Optional[FontType]=None,
+                        centered:bool=False, top_corner:bool=False) -> None:
         lines = text.split("\n")
         offsets = []
         if not font:
@@ -145,8 +151,10 @@ class PdfHandler:
             tx.setXPos(-offset)
         self.canvas.drawText(tx)
 
-    def text_block_paging(self, text_block, pos_x_px=100, pos_y_px=0, max_lines=45, auto_new_page=False, font=DEFAULT_FONT):
-
+    def text_block_paging(self, text_block:str, pos_x_px:float=100, pos_y_px:float=0,
+                          max_lines:int=45, auto_new_page:bool=False, font : Optional[FontType] = None):
+        if not font:
+            font = self.font
         # Split the text into a list of lines, since
         # we can only write single lines to the PDF
         user_in_lines = text_block.split('\n')
@@ -161,7 +169,7 @@ class PdfHandler:
 
         # Write the text to the pdf canvas
         count = 0
-        text_object = self.canvas.beginText(pos_x_px, pos_y_px)
+        text_object: PDFTextObject = self.canvas.beginText(pos_x_px, pos_y_px)
         self.__set_font(text_object, font)
 
         for line in user_in_wrapped_lines:
@@ -177,7 +185,8 @@ class PdfHandler:
                     return
             self.canvas.drawText(text_object)
 
-    def text_rotated(self, x, y, line, font=None, angle=0, centered=False):
+    def text_rotated(self, x:float, y:float, line:str, font:Optional[FontType]=None,
+                     angle:float=0, centered:bool=False) -> None:
         if not font:
             font = self.font
         if centered:
@@ -195,7 +204,9 @@ class PdfHandler:
 
         self.canvas.drawText(tx)
 
-    def text_rotated_bounding_box(self, c_x, c_y, radius, text, angle, max_angle, max_length, font=None):
+    def text_rotated_bounding_box(self, c_x:float, c_y:float, radius:float, text:str,
+                                  angle:float, max_angle:float, max_length:float,
+                                  font:Optional[FontType]=None) -> None:
         if not font:
             font = self.font
 
@@ -241,14 +252,14 @@ class PdfHandler:
 
     # circular_string
     def circular_string_bounding_box(self,
-                                     circle_center_x, circle_center_y,
-                                     circle_radius_to_text,
-                                     text,
-                                     angle_start=0,
-                                     font=None,
-                                     text_inside_circle=0,
-                                     centered=False,
-                                     max_angle=360):
+                                     circle_center_x:float, circle_center_y:float,
+                                     circle_radius_to_text:float,
+                                     text:str,
+                                     angle_start:float=0,
+                                     font:Optional[FontType]=None,
+                                     text_inside_circle:float=0,
+                                     centered:bool=False,
+                                     max_angle:float=360) -> None:
 
         if not font:
             font = self.font

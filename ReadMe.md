@@ -1,5 +1,5 @@
 ## Genealogy Project
-* This reads a set of JSON files that contain all the family relationsships
+* This reads a set of JSON files that contain all the family relationships
 * 
 
 ## structured files:

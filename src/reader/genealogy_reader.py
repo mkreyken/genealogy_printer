@@ -2,9 +2,10 @@ import json
 import os
 import random
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict, Optional, Union, List
 from ordered_set import OrderedSet
 
+from models.people import PersonAsJson, PeopleAsJson, Person
 from src import reader
 from src.utils.filesystem import get_data_directory
 
@@ -12,7 +13,8 @@ from src.utils.filesystem import get_data_directory
 class GenealogyReader:
 
     def __init__(self):
-        self.people = {}
+        # self.people : Dict[str,Person] = {}
+        self.people : Dict[str,Any] = {}
 
     @classmethod
     def random_id(cls, person) -> str:
@@ -279,13 +281,72 @@ class GenealogyReader:
                 print(person)
                 raise ex
 
+
+    def convert_to_dict(self,people:PeopleAsJson) -> None:
+        pass
+
+    def load_person2(self, data: Dict[str, Any]) -> PersonAsJson:
+        """Convert a dict into a PersonAsJson, recursively."""
+
+        def convert_maybe_person(value: Any) -> Optional[Union[str, PersonAsJson]]:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                return value
+            if isinstance(value, dict):
+                return self.load_person(value)
+            return None
+
+        def convert_list(value: Any) -> Optional[List[Union[str, PersonAsJson]]]:
+            if value is None:
+                return None
+            if isinstance(value, dict):
+                # spouse: { ... }  → wrap in list
+                return [self.load_person(value)]
+            if isinstance(value, str):
+                # spouse: "id123" → wrap in list
+                return [value]
+            if isinstance(value, list):
+                result = []
+                for item in value:
+                    if isinstance(item, str):
+                        result.append(item)
+                    elif isinstance(item, dict):
+                        result.append(self.load_person(item))
+                return result
+            return None
+
+        return PersonAsJson(
+            id=data.get("id"),
+            name=data.get("name", ""),
+            sex=data.get("sex"),
+            mom=convert_maybe_person(data.get("mom")),
+            dad=convert_maybe_person(data.get("dad")),
+            years=data.get("years"),
+            born_location=data.get("born_location"),
+            died_location=data.get("died_location"),
+            married_location=data.get("married_location"),
+            divorced=data.get("divorced"),
+            married=data.get("married"),
+            spouse=convert_list(data.get("spouse")),
+            children=convert_list(data.get("children")),
+            notes=data.get("notes"),
+        )
+
+
+    def convert_from_json(self, json_data: Dict[str, Any]) -> PeopleAsJson:
+        """Convert the top-level dict into PeopleAsJson."""
+        people_raw = json_data.get(reader.PEOPLE_GROUP, [])
+        people = [self.load_person(p) for p in people_raw]
+        return PeopleAsJson(people=people)
+
     # load from this list of files all people and build a dict<person_id, person> from that data
     def load_people(self, files=None):
         data_dir = get_data_directory().absolute()
 
         if not files:
             files = os.listdir(data_dir)
-
+        results = None
         for file in files:
             if file.lower().endswith(".json"):
                 full_file_name = os.path.join(data_dir, file)
@@ -298,6 +359,10 @@ class GenealogyReader:
                     for person in data[reader.PEOPLE_GROUP]:
                         self.load_person(person)
 
+
+                    #results = self.convert_from_json(data)
+        #assert results is not None
+        #self.convert_to_dict(results)
         self.check_sex()
         self.fix_relations()
         self.fix_single_parent()
