@@ -1,6 +1,6 @@
-from typing import Dict, Any
+from typing import Dict, Optional
 
-from src import reader
+from models.people import Person
 from src.reader.genealogy_reader import GenealogyReader
 
 SELF = "Me"
@@ -31,8 +31,9 @@ THIRD = "Third "
 FOURTH = "Fourth "
 FIFTH = "Fifth "
 
-FEMALE = reader.PERSON_FEMALE
-MALE = reader.PERSON_MALE
+# file values
+FEMALE = "f"
+MALE = "m"
 
 RELATIVE_MAP = {
 
@@ -46,11 +47,11 @@ RELATIVE_MAP = {
     SELF: {FEMALE: SELF, MALE: SELF},
     SELF + CHILD: {FEMALE: DAUGHTER, MALE: SON},
     SELF + CHILD + CHILD: {FEMALE: GRAND + DAUGHTER, MALE: GRAND + SON},
-    SELF + CHILD + CHILD + CHILD : {FEMALE: GREAT + GRAND + DAUGHTER, MALE: GREAT + GRAND + SON},
-    SELF + CHILD + CHILD + CHILD + CHILD : {
+    SELF + CHILD + CHILD + CHILD: {FEMALE: GREAT + GRAND + DAUGHTER, MALE: GREAT + GRAND + SON},
+    SELF + CHILD + CHILD + CHILD + CHILD: {
         FEMALE: GREAT + GREAT + GRAND + DAUGHTER,
         MALE: GREAT + GREAT + GRAND + SON},
-    SELF + CHILD + CHILD + CHILD + CHILD + CHILD :
+    SELF + CHILD + CHILD + CHILD + CHILD + CHILD:
         {FEMALE: THIRD + GREAT + GRAND + DAUGHTER,
          MALE: THIRD + GREAT + GRAND + SON},
     SELF + CHILD + CHILD + CHILD + CHILD + CHILD + CHILD:
@@ -126,14 +127,14 @@ RELATIVE_MAP = {
 }
 
 
-def convert_relationships(person):
+def convert_relationships(person) -> dict[str, str]:
     try:
-        if not person.get(reader.RELATIONS):
-            return dict()
+        if not person.relations:
+            return {}
 
-        result = dict()
-        relationship = person[reader.RELATIONS]
-        sex = person[reader.PERSON_SEX]
+        result = {}
+        relationship = person.relations
+        sex = person.sex
 
         for other_id in relationship.keys():
             value = relationship[other_id]
@@ -149,74 +150,74 @@ def convert_relationships(person):
 
 
 class RelationshipMapper:
+    people: dict[str, Person]
+    queue: list[Person]
 
-    def __init__(self, people_dict : Dict[str,Any]):
-        self.people = people_dict
+    def __init__(self, people: Dict[str, Person]):
+        self.people = people
         self.queue = []
 
-    def __add_to_queue(self, person: Dict[str,Any]):
+    def __add_to_queue(self, person: Person):
         self.queue.append(person)
 
-    def __next_in_queue(self) ->  Dict[str,Any]|None:
+    def __next_in_queue(self) -> Optional[Person]:
         if len(self.queue) == 0:
             return None
         return self.queue.pop()
 
-    def __add_me(self, person: Dict[str,Any], other_id):
+    def __add_me(self, person: Person, other_id):
         relation = SELF
-        if not person.get(reader.RELATIONS):
-            person[reader.RELATIONS] = dict()
-        if person[reader.RELATIONS].get(other_id):
+        if not person.relations:
+            person.relations = dict()
+        if person.relations.get(other_id):
             return
-        person[reader.RELATIONS][other_id] = relation
+        person.relations[other_id] = relation
         self.__add_to_queue(person)
 
-    def __add_parent(self, what:str, person: Dict[str,Any], other_id):
+    def __add_parent(self, what: str, person: Person, other_id):
         relation = what + PARENT
-        if not person.get(reader.RELATIONS):
-            person[reader.RELATIONS] = dict()
-        if person[reader.RELATIONS].get(other_id):
+        if not person.relations:
+            person.relations = dict()
+        if person.relations.get(other_id):
             return
-        person[reader.RELATIONS][other_id] = relation
+        person.relations[other_id] = relation
         self.__add_to_queue(person)
 
-    def __add_spouse(self, what:str, person:Dict[str,Any], other_id:str):
+    def __add_spouse(self, what: str, person: Person, other_id: str):
         relation = what + SPOUSE
-        if not person.get(reader.RELATIONS):
-            person[reader.RELATIONS] = dict()
-        if person[reader.RELATIONS].get(other_id):
+        if not person.relations:
+            person.relations = dict()
+        if person.relations.get(other_id):
             return
-        person[reader.RELATIONS][other_id] = relation
+        person.relations[other_id] = relation
         self.__add_to_queue(person)
 
-    def __add_child(self, what:str, person: Dict[str,Any], other_id:str):
+    def __add_child(self, what: str, person: Person, other_id: str):
         relation = what + CHILD
-        if not person.get(reader.RELATIONS):
-            person[reader.RELATIONS] = dict()
-        if person[reader.RELATIONS].get(other_id):
+        if not person.relations:
+            person.relations = dict()
+        if person.relations.get(other_id):
             return
-        person[reader.RELATIONS][other_id] = relation
+        person.relations[other_id] = relation
         self.__add_to_queue(person)
 
     # Add a relationship of person to other_id i.e. Person is the Father of other_id
     # then if this is a new relationship, then use this person to distribute that relationship
-    def __add_relations(self, person:Dict[str,Any], other_id : str):
+    def __add_relations(self, person: Person, other_id: str):
         try:
-            relation = person[reader.RELATIONS][other_id]
-
-            if person.get(reader.PERSON_PARENTS):
-                for parent_id in person[reader.PERSON_PARENTS]:
+            relation = person.relations[other_id]
+            parent_ids = person.parent_ids()
+            if parent_ids:
+                for parent_id in parent_ids:
                     parent = self.people[parent_id]
                     self.__add_parent(relation, parent, other_id)
 
-            if person.get(reader.PERSON_SPOUSES):
-                for spouse_id in person[reader.PERSON_SPOUSES]:
-                    self.__add_spouse(relation, self.people[spouse_id], other_id)
+            for spouse_id in person.spouse_ids():
+                self.__add_spouse(relation, self.people[spouse_id], other_id)
 
-            if person.get(reader.PERSON_CHILDREN):
-                for child_id in person[reader.PERSON_CHILDREN]:
-                    child = self.people[child_id]
-                    self.__add_child(relation, child, other_id)
+            for child_id in person.children_ids():
+                child = self.people[child_id]
+                self.__add_child(relation, child, other_id)
         except Exception as ex:
             print("ex:" + str(person))
             raise ex
@@ -224,8 +225,8 @@ class RelationshipMapper:
     # We only add direct parents, and direct children here ,
     # not parents of children related (un related people), as those require qualifiers
     # i.e. Grand Father of My Grand Niece.
-    def my_relations(self, person: Dict[str,Any]):
-        other_id = person[reader.PERSON_ID]
+    def my_relations(self, person: Person) -> None:
+        other_id = person.id
         self.__add_me(person, other_id)
         while True:
             person_next = self.__next_in_queue()
@@ -233,34 +234,28 @@ class RelationshipMapper:
                 return
             self.__add_relations(person_next, other_id)
 
-    def missing_sex_finder(self):
+    def fix_relationship_labels(self) -> None:
         for person in self.people.values():
-            if not person.get(reader.PERSON_SEX):
-                print("Missing sex:" + person[reader.PERSON_NAME])
-
-    def fix_relationship_labels(self):
-        for person in self.people.values():
-            person[reader.RELATIONS] = convert_relationships(person)
+            person.relations = convert_relationships(person)
 
 
-def sort_key_by_id(person:  Dict[str,Any]):
-    return person[reader.PERSON_ID].lower()
+def sort_key_by_id(person: Person):
+    return person.id.lower()
 
 
-def print_list_by_id(people: Dict[str,Any], sort_key_func):
+def print_list_by_id(people: Dict[str, Person], sort_key_func):
     peoples = []
     for person in people.values():
         peoples.append(person)
 
     peoples.sort(key=sort_key_func)
     for person in peoples:
-        print(person[reader.PERSON_ID] + ":" + str(person))
+        print(person.id + ":" + str(person))
 
 
 if __name__ == '__main__':
     gr = GenealogyReader()
     these_people = gr.load_people()
     rm = RelationshipMapper(these_people)
-    rm.missing_sex_finder()
     rm.fix_relationship_labels()
     print_list_by_id(these_people, sort_key_by_id)
