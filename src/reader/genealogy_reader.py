@@ -23,13 +23,13 @@ class GenealogyReader:
                 if self.people.get(parent_id):
                     new_parent_ids.append(parent_id)
                     parent = self.people[parent_id]
-                    children = person.children
-                    if children is None:
-                        children = []
+                    children_ids = parent.children_ids()
+                    if children_ids is None:
+                        children_ids = []
                     person_id = person.id
-                    if person_id not in children:
-                        children.append(person_id)
-                        parent.children = children
+                    if person_id not in children_ids:
+                        children_ids.append(person_id)
+                        parent.children = children_ids
                 else:
                     raise ValueError(f"missing connector:{person.id}->{parent_id}")
 
@@ -42,7 +42,7 @@ class GenealogyReader:
                         raise ValueError(f" can not find spouse:{spouse_id}")
                     if spouse.spouse is None:
                         spouse.spouse = [person.id]
-                    elif spouse_id not in spouse.spouse:
+                    elif person.id not in spouse.spouse_ids():
                         spouse.spouse.append(person.id)
 
     # if I have dad, and no mom, and dad has 1 spouse then warning and fix
@@ -51,7 +51,7 @@ class GenealogyReader:
     # if I have mom, and no dad, and dad has >11 spouse then error
     def fix_single_parent(self) -> None:
         for person in self.people.values():
-            if person.dad is not None and person.mom is not None:
+            if person.dad_id() is not None and person.mom_id() is not None:
                 continue
             dad_id = person.dad_id()
             mom_id = person.mom_id()
@@ -60,19 +60,21 @@ class GenealogyReader:
                 dad = self.people.get(dad_id)
                 if dad is None:
                     raise Exception(f"can not find dad:{dad_id}")
-                if dad.spouse is not None:
-                    print(f"No Mom/spouse:{dad.name}, {dad.years or ''}")
+                if dad.spouse is not None and len(dad.spouse) ==1:
+                    person.mom = dad.spouse_ids()[0]
+                    continue
                 else:
-                    raise Exception(f"can opps spouse:{dad_id}")
+                    print(f" single Dad {dad.name}")
 
             if mom_id is not None:
                 mom = self.people.get(mom_id)
                 if mom is None:
                     raise Exception(f"can not find mom:{mom_id}")
-                if mom.spouse is not None:
-                    print(f"No Dad/spouse:{mom.name}, {mom.years or ''}")
+                if mom.spouse is not None and len(mom.spouse) ==1:
+                    person.dad = mom.spouse_ids()[0]
+                    continue
                 else:
-                    raise Exception(f"can oops spouse:{mom_id}")
+                    print(f"single mom {mom.name}")
 
     @classmethod
     def _collect(cls, person: str | Person, out: dict[str, Person]) -> None:
@@ -126,8 +128,9 @@ class GenealogyReader:
         """Rewrite embedded Person objects into IDs only. Should only be done after flattening the people."""
         person.mom = id_of(person.mom)
         person.dad = id_of(person.dad)
-        person.spouse = person.spouse_ids()
-        person.children = person.children_ids()
+        #TODO: not sure how spouses get added when they are already present..
+        person.spouse = list(dict.fromkeys(person.spouse_ids()))
+        person.children = list(dict.fromkeys(person.children_ids()))
 
     def flatten_people(self) -> None:
         """Flatten nested people into a dict and rewrite embedded references."""
