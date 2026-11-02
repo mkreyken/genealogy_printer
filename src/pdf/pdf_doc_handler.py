@@ -72,18 +72,15 @@ class PdfHandler:
     canvas: Canvas
     filename: str
 
-    #  response = HttpResponse(content_type='application/pdf')
-    def __init__(self, filename, pagesize=r_page_sizes.LETTER, response=None, font_name=None, font_size=None):
+    def __init__(self, filename: str,
+                 pagesize: tuple[float, float] = r_page_sizes.LETTER,
+                 font_name: Optional[str] = None, font_size: Optional[int] = None) -> None:
         if not filename.endswith(".pdf"):
             filename += ".pdf"
 
-        if response:
-            response['Content-Disposition'] = 'attachment; filename="' + filename + '"'
-            self.canvas = r_canvas.Canvas(response, pagesize=pagesize)
-        else:
-            self.canvas = r_canvas.Canvas(filename, pagesize=pagesize)
-            full_name = os.path.join(os.path.abspath(os.getcwd()), filename)
-            self.filename = full_name
+        self.canvas = r_canvas.Canvas(filename, pagesize=pagesize)
+        full_name = os.path.join(os.path.abspath(os.getcwd()), filename)
+        self.filename = full_name
         self.font = DEFAULT_FONT
         if font_name:
             self.font = FontType(font_name, self.font.size) 
@@ -141,7 +138,8 @@ class PdfHandler:
             offsets = [(max_width - i) / 2 for i in offsets]
             if not top_corner:
                 x -= max_width / 2
-                y -= self.text_height(font) / 2 * len(lines)
+                # 0,0 is bottom left
+                y += self.text_height(font) / 2 * len(lines)
 
         tx = self.canvas.beginText(x, y)
         self.__set_font(tx, font)
@@ -219,8 +217,10 @@ class PdfHandler:
                 lines.append(this_line)
                 this_line = word[1:]
             else:
-                if max_length \
-                        and max_length < r_metrics.stringWidth(this_line + ' ' + word, font.font, font.size):
+                if len(this_line) == 0:
+                    this_line = word
+                elif max_length \
+                        and max_length > r_metrics.stringWidth(this_line + ' ' + word, font.font, font.size):
                     this_line += ' ' + word
                 else:
                     lines.append(this_line)
@@ -233,12 +233,30 @@ class PdfHandler:
         x, y = angle_and_distance_to_xy(mid_angle, radius)
 
         line_cnt = 0- len(lines) / 2
+        line_height = self.text_height() * 1.2
+        font_size = font.size
+        required_height = (len(lines)+1) * line_height
+        available_height = radius * math.radians(max_angle)
+
+        if required_height > available_height:
+            rat = available_height / required_height
+            if .7 < rat < 1.0:
+                line_height *= rat
+            else :
+                scale = max(0.6, available_height / required_height)
+                if scale < 1.0:
+                    font_size = int(font.size * scale)
+                    line_height = self.text_height(FontType(font.font,font_size)) * 1.2
+
         for line in lines:
             # there is a single x,y, transformation matrix per object, so we set it in the one transform
             tx = self.canvas.beginText()
 
-            self.__set_font(tx, font)
-            offset_y = line_cnt * self.text_height()
+            self.__set_font(tx, FontType(font.font,font_size))
+            offset_y = (
+                    line_cnt * line_height
+                    + self.text_height() * 0.8
+            )
             line_cnt += 1
             offset_x = 0
 
